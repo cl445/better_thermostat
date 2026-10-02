@@ -125,6 +125,25 @@
           "mpc_v2_plant_preset": "Only used by the MPC v2 calibration mode.\n***Auto***: Derives the room model from what Better Thermostat has learned about the room, such as its heat-loss rate.\n***Small, Medium or Large room***: Starts from a fixed room model for that room size.",
           "calibration": "Hvordan kalibreringen skal anvendes på TRV (Target temp or offset)\n***Måltemperaturbaseret***: Anvend kalibreringen til måltemperaturen.\n***Offset-baseret***: Anvend kalibreringen til offset."
         }
+      },
+      "init": {
+        "description": "Indstillinger for {name}. Vælg, hvad du vil ændre; intet gemmes, før du vælger Gem.\n\n**Detaljerede oplysninger:** {docs_url}",
+        "menu_options": {
+          "user": "Rum og sensorer",
+          "thermostat": "Termostatindstillinger",
+          "save": "Gem"
+        },
+        "menu_option_descriptions": {
+          "user": "Navn, termostater, rumsensor, vindue-, udendørs- og komfortindstillinger.",
+          "thermostat": "Kalibrering og enhedsindstillinger for én termostat.",
+          "save": "Gem ændringerne og genindlæs termostaten."
+        }
+      },
+      "thermostat": {
+        "description": "Hvilken termostats indstillinger vil du ændre?",
+        "data": {
+          "trv": "Termostat"
+        }
       }
     },
     "error": {

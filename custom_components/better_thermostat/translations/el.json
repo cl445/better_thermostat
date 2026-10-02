@@ -125,6 +125,25 @@
           "mpc_v2_plant_preset": "Only used by the MPC v2 calibration mode.\n***Auto***: Derives the room model from what Better Thermostat has learned about the room, such as its heat-loss rate.\n***Small, Medium or Large room***: Starts from a fixed room model for that room size.",
           "calibration": "Πώς πρέπει να εφαρμοστεί η βαθμονόμηση στο TRV (Θερμοκρασία στόχος ή μετατόπιση)\n***Βασισμένη στη Θερμοκρασία Στόχο***: Εφαρμόστε τη βαθμονόμηση στη θερμοκρασία στόχο.\n***Βασισμένη στη Μετατόπιση***: Εφαρμόστε τη βαθμονόμηση στη μετατόπιση."
         }
+      },
+      "init": {
+        "description": "Ρυθμίσεις του {name}. Επιλέξτε τι θέλετε να αλλάξετε· τίποτα δεν αποθηκεύεται πριν από την Αποθήκευση.\n\n**Λεπτομερείς πληροφορίες:** {docs_url}",
+        "menu_options": {
+          "user": "Δωμάτιο και αισθητήρες",
+          "thermostat": "Ρυθμίσεις θερμοστάτη",
+          "save": "Αποθήκευση"
+        },
+        "menu_option_descriptions": {
+          "user": "Όνομα, θερμοστάτες, αισθητήρας δωματίου, ρυθμίσεις παραθύρου, εξωτερικής θερμοκρασίας και άνεσης.",
+          "thermostat": "Βαθμονόμηση και επιλογές συσκευής ενός θερμοστάτη.",
+          "save": "Αποθήκευση των αλλαγών και επαναφόρτωση του θερμοστάτη."
+        }
+      },
+      "thermostat": {
+        "description": "Ποιου θερμοστάτη τις ρυθμίσεις θέλετε να αλλάξετε;",
+        "data": {
+          "trv": "Θερμοστάτης"
+        }
       }
     },
     "error": {

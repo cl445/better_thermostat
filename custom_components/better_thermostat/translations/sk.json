@@ -125,6 +125,25 @@
           "mpc_v2_plant_preset": "Only used by the MPC v2 calibration mode.\n***Auto***: Derives the room model from what Better Thermostat has learned about the room, such as its heat-loss rate.\n***Small, Medium or Large room***: Starts from a fixed room model for that room size.",
           "calibration": "Ako sa má kalibrácia použiť na TRV (cieľová teplota alebo ofset)\n***Na základe cieľovej teploty***: Použite kalibráciu na cieľovú teplotu.\n***Na základe ofsetu***: Použite kalibráciu na offset."
         }
+      },
+      "init": {
+        "description": "Nastavenia {name}. Vyberte, čo chcete zmeniť; nič sa neuloží pred voľbou Uložiť.\n\n**Podrobné informácie:** {docs_url}",
+        "menu_options": {
+          "user": "Miestnosť a senzory",
+          "thermostat": "Nastavenia termostatu",
+          "save": "Uložiť"
+        },
+        "menu_option_descriptions": {
+          "user": "Názov, termostaty, senzor miestnosti, nastavenia okna, vonkajšej teploty a komfortu.",
+          "thermostat": "Kalibrácia a možnosti zariadenia jedného termostatu.",
+          "save": "Uložiť zmeny a znovu načítať termostat."
+        }
+      },
+      "thermostat": {
+        "description": "Nastavenia ktorého termostatu chcete zmeniť?",
+        "data": {
+          "trv": "Termostat"
+        }
       }
     },
     "error": {

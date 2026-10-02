@@ -162,24 +162,27 @@ async def _run_create_flow(hass, user_input, advanced=None):
 async def _run_options_flow(hass, entry, user_input, advanced=None):
     """Re-run the options flow over an existing entry and return its forms.
 
-    Returns the advanced form and the final result, like the create flow, so
-    a test can assert on what the form pre-filled as well as on what was
-    written. The entry reloads on the update, so the caller waits for the
-    thermostat that comes back up rather than reusing the old one.
+    Submits ``user_input`` on the room form and ``advanced`` on the
+    thermostat's form, then saves from the menu. Returns the thermostat's
+    form and the final result, like the create flow, so a test can assert on
+    what the form pre-filled as well as on what was written. A thermostat
+    the room form swapped in has its form shown straight away; one the entry
+    kept is opened from the menu. The entry reloads on the update, so the
+    caller waits for the thermostat that comes back up rather than reusing
+    the old one.
     """
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["step_id"] == "user"
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], user_input
-    )
-    assert result["type"] is FlowResultType.FORM, result
+    options = hass.config_entries.options
+    room = await open_the_room_settings(hass, entry)
+    flow_id = room["flow_id"]
+    result = await options.async_configure(flow_id, user_input)
+    if result["type"] is FlowResultType.MENU:
+        result = await open_the_thermostat_settings(hass, flow_id)
     assert result["step_id"] == "advanced", result
     advanced_form = result
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], advanced or {}
-    )
+    result = await options.async_configure(flow_id, advanced or {})
+    assert result["type"] is FlowResultType.MENU, result
+    result = await save_the_settings(hass, flow_id)
     assert result["type"] is FlowResultType.CREATE_ENTRY, result
-    await hass.async_block_till_done()
     return advanced_form, result
 
 

@@ -125,6 +125,25 @@
           "mpc_v2_plant_preset": "Only used by the MPC v2 calibration mode.\n***Auto***: Derives the room model from what Better Thermostat has learned about the room, such as its heat-loss rate.\n***Small, Medium or Large room***: Starts from a fixed room model for that room size.",
           "calibration": "Способ применения калибровки к термоголовке.\n***По целевой температуре***: Калибровка применяется к заданной температуре.\n***По смещению***: Калибровка применяется как смещение."
         }
+      },
+      "init": {
+        "description": "Настройки {name}. Выберите, что изменить; ничего не сохраняется до нажатия «Сохранить».\n\n**Подробная информация:** {docs_url}",
+        "menu_options": {
+          "user": "Помещение и датчики",
+          "thermostat": "Настройки термостата",
+          "save": "Сохранить"
+        },
+        "menu_option_descriptions": {
+          "user": "Имя, термостаты, датчик помещения, настройки окна, наружной температуры и комфорта.",
+          "thermostat": "Калибровка и параметры устройства одного термостата.",
+          "save": "Сохранить изменения и перезагрузить термостат."
+        }
+      },
+      "thermostat": {
+        "description": "Настройки какого термостата вы хотите изменить?",
+        "data": {
+          "trv": "Термостат"
+        }
       }
     },
     "error": {

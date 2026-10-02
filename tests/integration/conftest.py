@@ -667,36 +667,80 @@ def accepted_form(form, **overrides):
     return submission | overrides
 
 
-async def click_through_the_options(hass, entry, **overrides):
-    """Walk the options flow accepting every pre-filled value, and return the forms.
+async def open_the_room_settings(hass, entry):
+    """Open the settings of ``entry`` and pick the room from the menu."""
+    menu = await hass.config_entries.options.async_init(entry.entry_id)
+    assert menu["type"] is FlowResultType.MENU, menu
+    form = await hass.config_entries.options.async_configure(
+        menu["flow_id"], {"next_step_id": "user"}
+    )
+    assert form["step_id"] == "user", form
+    return form
 
-    This is "the user opened the settings and changed nothing": every step is
-    submitted with what it offered. ``overrides`` replace single fields on the
-    steps that publish them, for the user who changed exactly one thing.
+
+async def open_the_thermostat_settings(hass, flow_id, entity_id=None):
+    """Pick a thermostat's settings from the menu the flow is showing.
+
+    An entry with several thermostats asks which one; ``entity_id`` answers.
     """
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    forms = []
-    # A flow that keeps handing back the same step would otherwise hang the
-    # suite instead of failing it. No step of this flow repeats, so the bound
-    # is generous.
-    for _ in range(MAX_FLOW_STEPS):
-        if result["type"] != "form":
-            break
-        forms.append(result)
-        step_overrides = {
-            key: value
-            for key, value in overrides.items()
-            if any(marker == key for marker in result["data_schema"].schema)
-        }
-        result = await hass.config_entries.options.async_configure(
-            result["flow_id"], accepted_form(result, **step_overrides)
-        )
-    else:
-        raise AssertionError(f"options flow did not finish: {result}")
-    # A step that aborts also leaves the loop, and the caller would then read
-    # the state the entry had before the flow ran.
-    assert result["type"] is FlowResultType.CREATE_ENTRY, result
+    options = hass.config_entries.options
+    form = await options.async_configure(flow_id, {"next_step_id": "thermostat"})
+    if form["step_id"] == "thermostat":
+        form = await options.async_configure(flow_id, {"trv": entity_id})
+    assert form["step_id"] == "advanced", form
+    return form
+
+
+async def save_the_settings(hass, flow_id):
+    """Pick save from the menu the flow is showing, and return the result."""
+    result = await hass.config_entries.options.async_configure(
+        flow_id, {"next_step_id": "save"}
+    )
     await hass.async_block_till_done()
+    return result
+
+
+async def click_through_the_options(hass, entry, **overrides):
+    """Walk every part of the options menu accepting what it offers, and save.
+
+    This is "the user opened the settings and changed nothing": the room form
+    and each thermostat's form are submitted with what they offered, then
+    the menu's save. ``overrides`` replace single fields on the forms that
+    publish them, for the user who changed exactly one thing. Returns the
+    forms in the order they were shown.
+    """
+    forms = []
+
+    async def submit_forms(result):
+        # A flow that keeps handing back the same form would otherwise hang
+        # the suite instead of failing it.
+        for _ in range(MAX_FLOW_STEPS):
+            if result["type"] is not FlowResultType.FORM:
+                return result
+            forms.append(result)
+            step_overrides = {
+                key: value
+                for key, value in overrides.items()
+                if any(marker == key for marker in result["data_schema"].schema)
+            }
+            result = await hass.config_entries.options.async_configure(
+                result["flow_id"], accepted_form(result, **step_overrides)
+            )
+        raise AssertionError(f"options flow did not return to its menu: {result}")
+
+    room = await open_the_room_settings(hass, entry)
+    flow_id = room["flow_id"]
+    menu = await submit_forms(room)
+    for entity_id in [trv["trv"] for trv in entry.data["thermostat"]]:
+        assert menu["type"] is FlowResultType.MENU, menu
+        menu = await submit_forms(
+            await open_the_thermostat_settings(hass, flow_id, entity_id)
+        )
+    assert menu["type"] is FlowResultType.MENU, menu
+    result = await save_the_settings(hass, flow_id)
+    # A step that aborts or sends a form back leaves the walk, and the caller
+    # would then read the state the entry had before the flow ran.
+    assert result["type"] is FlowResultType.CREATE_ENTRY, result
     return forms
 
 

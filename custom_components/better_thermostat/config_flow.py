@@ -1097,7 +1097,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle a option flow for a config entry."""
+    """Change the settings of an entry, one part at a time.
+
+    The flow opens on a menu: the room and its sensors, the settings of one
+    thermostat, or saving. Changes are collected on a copy of the entry's
+    data and written once, when the user saves.
+    """
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
@@ -1106,9 +1111,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         self.trv_bundle: list[dict[str, Any]] = []
         self.device_name = ""
         self.model: str | None = None
-        self._last_step = False
         self.updated_config: dict[str, Any] = {}
-        self._active_trv_config: dict[str, Any] | None = None
+        # Thermostats the room form added; each one's form is shown in turn
+        # before the menu comes back.
+        self._new_trv_indices: list[int] = []
         # Do not set `self.config_entry` directly; store in a private attribute
         # to avoid deprecated behavior. The framework will set `config_entry` on
         # the options flow object as needed.
@@ -1116,142 +1122,146 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         super().__init__()
 
     async def async_step_init(self, _user_input=None):
-        """Manage the options."""
-        return await self.async_step_user()
+        """Open the menu on a copy of the entry's configuration."""
+        self.updated_config = copy.deepcopy(dict(self._config_entry.data))
+        self.trv_bundle = [
+            {**trv, "adapter": None}
+            for trv in self.updated_config.get(CONF_HEATER, [])
+            if isinstance(trv, dict) and trv.get("trv")
+        ]
+        self.updated_config[CONF_HEATER] = self.trv_bundle
+        return self._show_menu()
 
-    async def async_step_advanced(
-        self, user_input=None, _trv_config=None, _update_config=None
-    ):
-        """Manage the advanced options."""
-        trv_cfg = _trv_config if isinstance(_trv_config, dict) else None
-        if trv_cfg is None:
-            trv_cfg = self._active_trv_config
-        if trv_cfg is None:
-            _LOGGER.debug(
-                "OptionsFlow advanced step missing TRV context; aborting to init"
-            )
-            return await self.async_step_init()
-
-        self._active_trv_config = trv_cfg
-        ctx = await _prepare_advanced_context(self, trv_cfg)
-        existing_adv = trv_cfg.get("advanced") if isinstance(trv_cfg, dict) else None
-        _LOGGER.debug(
-            "OptionsFlow advanced step called (index=%s, trv=%s) with user_input=%s",
-            self.i,
-            ctx.get("trv_id"),
-            user_input,
+    def _show_menu(self):
+        """Offer the parts of the configuration and saving."""
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["user", "thermostat", "save"],
+            description_placeholders={
+                "name": self.updated_config.get(CONF_NAME, ""),
+                "docs_url": CONFIG_WALKTHROUGH_URL,
+            },
         )
 
+    async def async_step_thermostat(self, user_input=None):
+        """Pick the thermostat whose settings to change."""
+        trv_entity_ids = [trv["trv"] for trv in self.trv_bundle]
+        if len(trv_entity_ids) == 1:
+            self.i = 0
+            return await self._show_advanced_form()
         if user_input is not None:
-            advanced_data = _normalize_advanced_submission(
-                user_input,
-                default_calibration=ctx["default_calibration"],
-                homematic=ctx["homematic"],
-                has_auto=ctx["has_auto"],
-            )
-            _LOGGER.debug(
-                "OptionsFlow advanced step storing data for %s (index %s): %s",
-                trv_cfg.get("trv"),
-                self.i,
-                advanced_data,
-            )
-            self.trv_bundle[self.i]["advanced"] = advanced_data
-            self.trv_bundle[self.i]["adapter"] = None
+            self.i = trv_entity_ids.index(user_input["trv"])
+            return await self._show_advanced_form()
+        return self.async_show_form(
+            step_id="thermostat",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("trv", default=trv_entity_ids[0]): (
+                        selector.EntitySelector(
+                            selector.EntitySelectorConfig(
+                                include_entities=trv_entity_ids
+                            )
+                        )
+                    )
+                }
+            ),
+            last_step=False,
+        )
 
-            self.i += 1
+    async def async_step_advanced(self, user_input=None):
+        """Store the settings of the thermostat whose form was submitted."""
+        if user_input is None:
+            return await self._show_advanced_form()
 
-            if len(self.trv_bundle) > self.i:
-                self._active_trv_config = None
-                return await self.async_step_advanced(
-                    None, self.trv_bundle[self.i], _update_config
-                )
+        trv_cfg = self.trv_bundle[self.i]
+        ctx = await _prepare_advanced_context(self, trv_cfg)
+        advanced_data = _normalize_advanced_submission(
+            user_input,
+            default_calibration=ctx["default_calibration"],
+            homematic=ctx["homematic"],
+            has_auto=ctx["has_auto"],
+        )
+        _LOGGER.debug(
+            "OptionsFlow advanced step storing data for %s (index %s): %s",
+            trv_cfg.get("trv"),
+            self.i,
+            advanced_data,
+        )
+        trv_cfg["advanced"] = advanced_data
+        trv_cfg["adapter"] = None
 
-            self.updated_config[CONF_HEATER] = self.trv_bundle
-            _LOGGER.debug("Updated config: %s", self.updated_config)
-            _LOGGER.debug(
-                "OptionsFlow writing heater bundle: %s",
-                self.updated_config.get(CONF_HEATER),
-            )
+        if self._new_trv_indices:
+            self.i = self._new_trv_indices.pop(0)
+            return await self._show_advanced_form()
+        return self._show_menu()
 
-            # Another entry can have taken a thermostat this one gains while
-            # the forms were open, so the check runs again with nothing
-            # awaited before the write.
-            in_use = self._in_use_placeholders([trv["trv"] for trv in self.trv_bundle])
-            if in_use:
-                self.i = 0
-                self.trv_bundle = []
-                self._active_trv_config = None
-                return self._show_user_form(
-                    self.updated_config, {CONF_HEATER: "trv_in_use"}, in_use
-                )
-
-            # The comparison reads the entry's data, so it runs before the
-            # write; the signal goes out only once the write has happened.
-            algorithms_changed = self._calibration_algorithms_changed()
-
-            # The whole configuration lives in the entry's data. Options are
-            # emptied in the same update, so an entry that still carries them
-            # is written — and so reloaded — once rather than twice.
-            self.hass.config_entries.async_update_entry(
-                self._config_entry, data=self.updated_config, options={}
-            )
-            if algorithms_changed:
-                # Dynamic entity management adds and removes algorithm sensors.
-                signal_key = f"bt_config_changed_{self._config_entry.entry_id}"
-                dispatcher_send(
-                    self.hass, signal_key, {"entry_id": self._config_entry.entry_id}
-                )
-            self._active_trv_config = None
-            # The entry is written above and nothing reads its options.
-            return self.async_create_entry(title=self.updated_config["name"], data={})
-
-        user_input = user_input or {}
+    async def _show_advanced_form(self):
+        """Show the settings form of the thermostat at ``self.i``."""
+        trv_cfg = self.trv_bundle[self.i]
+        ctx = await _prepare_advanced_context(self, trv_cfg)
         info = ctx.get("info", {})
         fields = _build_advanced_fields(
-            sources=(user_input, existing_adv),
+            sources=({}, trv_cfg.get("advanced")),
             default_calibration=ctx["default_calibration"],
             homematic=ctx["homematic"],
             has_auto=ctx["has_auto"],
             support_valve=info.get("support_valve", False),
             support_offset=info.get("support_offset", False),
         )
-        _LOGGER.debug(
-            "OptionsFlow advanced step showing form for trv=%s with defaults=%s",
-            ctx.get("trv_id"),
-            existing_adv,
-        )
-        self.device_name = user_input.get(CONF_NAME, "-")
-        self._last_step = self.i == len(self.trv_bundle) - 1
-
         return self.async_show_form(
             step_id="advanced",
             data_schema=vol.Schema(fields),
-            last_step=self._last_step,
+            last_step=False,
             description_placeholders={
                 "trv": ctx.get("trv_id") or "-",
                 "docs_url": CONFIG_WALKTHROUGH_URL,
             },
         )
 
+    async def async_step_save(self, _user_input=None):
+        """Write the collected configuration to the entry."""
+        # Another entry can have taken a thermostat this one gains while the
+        # flow was open, so the check runs again with nothing awaited before
+        # the write.
+        in_use = self._in_use_placeholders([trv["trv"] for trv in self.trv_bundle])
+        if in_use:
+            return self._show_user_form(
+                self.updated_config, {CONF_HEATER: "trv_in_use"}, in_use
+            )
+
+        # The comparison reads the entry's data, so it runs before the
+        # write; the signal goes out only once the write has happened.
+        algorithms_changed = self._calibration_algorithms_changed()
+
+        # The whole configuration lives in the entry's data. Options are
+        # emptied in the same update, so an entry that still carries them
+        # is written — and so reloaded — once rather than twice.
+        self.hass.config_entries.async_update_entry(
+            self._config_entry, data=self.updated_config, options={}
+        )
+        if algorithms_changed:
+            # Dynamic entity management adds and removes algorithm sensors.
+            signal_key = f"bt_config_changed_{self._config_entry.entry_id}"
+            dispatcher_send(
+                self.hass, signal_key, {"entry_id": self._config_entry.entry_id}
+            )
+        # The entry is written above and nothing reads its options.
+        return self.async_create_entry(title=self.updated_config["name"], data={})
+
     async def async_step_user(self, user_input=None):
-        """Handle the user step."""
+        """Change the room: its name, thermostats and sensors."""
         errors: dict[str, str] = {}
         in_use_placeholders: dict[str, str] = {}
         if user_input is not None:
             _LOGGER.debug("OptionsFlow user step received input: %s", user_input)
-            try:
-                normalized = _normalize_user_submission(
-                    user_input,
-                    mode="update",
-                    base=self._config_entry.data,
-                    errors=errors,
-                    system_unit=self.hass.config.units.temperature_unit,
-                )
-            except Exception as err:
-                _LOGGER.exception("OptionsFlow user step normalization failed: %s", err)
-                raise
+            normalized = _normalize_user_submission(
+                user_input,
+                mode="update",
+                base=self.updated_config,
+                errors=errors,
+                system_unit=self.hass.config.units.temperature_unit,
+            )
             _LOGGER.debug("OptionsFlow user step normalized data: %s", normalized)
-            self.updated_config = normalized
             # The room sensor is required, but in this form it is optional so
             # the stored one can be pre-filled; an emptied selector arrives as
             # a missing key.
@@ -1263,60 +1273,59 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 in_use_placeholders = in_use
 
             if not errors:
-                self.trv_bundle = []
-
-                # Get the list of heaters from the normalized input
-                heaters = normalized.get(CONF_HEATER, [])
-
-                # Create a map of existing TRV configs by TRV ID
-                existing_trvs = {
-                    trv.get("trv"): trv
-                    for trv in self._config_entry.data.get(CONF_HEATER, [])
-                    if isinstance(trv, dict) and trv.get("trv")
-                }
-
-                for heater_item in heaters:
-                    if isinstance(heater_item, dict):
-                        entity_id = heater_item.get("trv")
-                    else:
-                        entity_id = heater_item
-
-                    if not entity_id:
-                        continue
-
-                    if entity_id in existing_trvs:
-                        # Use existing config for this TRV
-                        trv_copy = copy.deepcopy(existing_trvs[entity_id])
-                        trv_copy["adapter"] = None
-                        self.trv_bundle.append(trv_copy)
-                    else:
-                        # This is a new TRV added during edit
-                        integration = await get_trv_intigration(self, entity_id)
-                        self.trv_bundle.append(
-                            {
-                                "trv": entity_id,
-                                "integration": integration,
-                                "model": await get_device_model(self, entity_id),
-                                "adapter": await load_adapter(
-                                    self, integration, entity_id
-                                ),
-                            }
-                        )
-
-                _LOGGER.debug(
-                    "OptionsFlow user step built trv bundle: %s", self.trv_bundle
+                trv_bundle, new_trv_indices = await self._rebuild_trv_bundle(
+                    normalized.get(CONF_HEATER, [])
                 )
-
-                if self.trv_bundle:
-                    return await self.async_step_advanced(
-                        None, self.trv_bundle[0], self.updated_config
+                if trv_bundle:
+                    self.trv_bundle = trv_bundle
+                    normalized[CONF_HEATER] = trv_bundle
+                    self.updated_config = normalized
+                    _LOGGER.debug(
+                        "OptionsFlow user step built trv bundle: %s", self.trv_bundle
                     )
+                    # A thermostat the room gained has no settings yet.
+                    if new_trv_indices:
+                        self.i, *self._new_trv_indices = new_trv_indices
+                        return await self._show_advanced_form()
+                    return self._show_menu()
 
                 errors[CONF_HEATER] = "no_heater"
 
         return self._show_user_form(
-            self._config_entry.data, errors, in_use_placeholders, user_input
+            self.updated_config, errors, in_use_placeholders, user_input
         )
+
+    async def _rebuild_trv_bundle(
+        self, heaters: Iterable[Any]
+    ) -> tuple[list[dict[str, Any]], list[int]]:
+        """Return the bundle for ``heaters`` and the indices of new thermostats.
+
+        A thermostat the entry already drives keeps the settings collected
+        so far; a new one is detected and has none yet.
+        """
+        known = {trv["trv"]: trv for trv in self.trv_bundle}
+        trv_bundle: list[dict[str, Any]] = []
+        new_trv_indices: list[int] = []
+        for heater_item in heaters:
+            entity_id = (
+                heater_item.get("trv") if isinstance(heater_item, dict) else heater_item
+            )
+            if not entity_id:
+                continue
+            if entity_id in known:
+                trv_bundle.append(known[entity_id])
+                continue
+            integration = await get_trv_intigration(self, entity_id)
+            new_trv_indices.append(len(trv_bundle))
+            trv_bundle.append(
+                {
+                    "trv": entity_id,
+                    "integration": integration,
+                    "model": await get_device_model(self, entity_id),
+                    "adapter": await load_adapter(self, integration, entity_id),
+                }
+            )
+        return trv_bundle, new_trv_indices
 
     def _in_use_placeholders(
         self, trv_entity_ids_to_check: Iterable[str]

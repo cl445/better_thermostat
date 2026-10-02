@@ -125,6 +125,25 @@
           "mpc_v2_plant_preset": "Only used by the MPC v2 calibration mode.\n***Auto***: Derives the room model from what Better Thermostat has learned about the room, such as its heat-loss rate.\n***Small, Medium or Large room***: Starts from a fixed room model for that room size.",
           "calibration": "Come deve essere applicata la calibrazione sul TRV (temperatura target o offset)\n***Basata sulla temperatura target***: Applica la calibrazione alla temperatura impostata.\n***Basata su offset***: Applica la calibrazione come offset."
         }
+      },
+      "init": {
+        "description": "Impostazioni di {name}. Scegli cosa modificare; nulla viene salvato prima di «Salva».\n\n**Informazioni dettagliate:** {docs_url}",
+        "menu_options": {
+          "user": "Stanza e sensori",
+          "thermostat": "Impostazioni del termostato",
+          "save": "Salva"
+        },
+        "menu_option_descriptions": {
+          "user": "Nome, termostati, sensore della stanza, impostazioni di finestra, esterno e comfort.",
+          "thermostat": "Calibrazione e opzioni del dispositivo di un termostato.",
+          "save": "Salva le modifiche e ricarica il termostato."
+        }
+      },
+      "thermostat": {
+        "description": "Di quale termostato vuoi modificare le impostazioni?",
+        "data": {
+          "trv": "Termostato"
+        }
       }
     },
     "error": {
